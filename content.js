@@ -30,18 +30,26 @@ async function downloadAttachments(taskId, button) {
   button.innerHTML = spinnerIcon;
 
   const url = `${baseUrl}_apis/wit/workitems/${taskId}?api-version=7.0&$expand=all`;
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let response, data;
 
-  const data = await response.json();
-  const attachments = data.relations.filter(
+  try {
+    response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    data = await response.json();
+  } catch (error) {
+    console.error("Error fetching work item data:", error);
+    button.innerHTML = downloadIcon;
+    return;
+  }
+
+  const attachments = data.relations?.filter(
     (relation) => relation.rel === "AttachedFile"
   );
 
-  if (attachments.length === 0) {
+  if (!attachments || attachments.length === 0) {
     alert("No additional files were found to download.");
     button.innerHTML = downloadIcon;
     return;
@@ -60,7 +68,7 @@ async function downloadAttachments(taskId, button) {
       });
 
       const blob = await attachmentResponse.blob();
-      const filename = attachment.attributes.name || `attachment-${index + 1}`;
+      const filename = attachment.attributes?.name || `attachment-${index + 1}`;
       zip.file(filename, blob);
     } catch (error) {
       console.log("Download error:", error);
@@ -77,7 +85,7 @@ async function downloadAttachments(taskId, button) {
   });
 }
 
-function addDownloadButton() {
+function addDownloadButtonCards() {
   const taskCards = document.querySelectorAll(".wit-card");
   taskCards.forEach((card) => {
     const taskId = card.getAttribute("data-itemid");
@@ -85,6 +93,7 @@ function addDownloadButton() {
 
     const button = document.createElement("button");
     button.innerHTML = downloadIcon;
+    button.title = "Attachments Download";
     button.classList.add("download-btn");
     button.style.position = "absolute";
     button.style.bottom = "10px";
@@ -116,4 +125,50 @@ function addDownloadButton() {
   });
 }
 
-addDownloadButton();
+function addDownloadButtonWorkItems() {
+  const taskRows = document.querySelectorAll(".bolt-pill");
+
+  taskRows.forEach((row) => {
+    const taskIdElement = row
+      .closest(".ms-DetailsRow-fields")
+      ?.querySelector(
+        '[data-automation-key="System.Id"] .work-item-simple-cell'
+      );
+
+    if (!taskIdElement) return;
+
+    const taskId = taskIdElement.textContent.trim();
+
+    const button = document.createElement("button");
+    button.innerHTML = downloadIcon;
+    button.title = "Attachments Download";
+    button.classList.add("download-btn");
+    button.style.backgroundColor = "#005595";
+    button.style.color = "white";
+    button.style.padding = "10px";
+    button.style.border = "none";
+    button.style.borderRadius = "20px";
+    button.style.cursor = "pointer";
+    button.style.marginLeft = "5px";
+
+    button.addEventListener("click", () => {
+      chrome.runtime.sendMessage(
+        { action: "getAuthorizationToken" },
+        (response) => {
+          if (response && response.token) {
+            token = response.token.split("Bearer ")[1];
+            baseUrl = window.location.href.split("_workitems")[0];
+            downloadAttachments(taskId, button);
+          } else {
+            console.log("Token could not be received.");
+          }
+        }
+      );
+    });
+    row.style.position = "relative";
+    row.appendChild(button);
+  });
+}
+
+addDownloadButtonCards();
+addDownloadButtonWorkItems();
